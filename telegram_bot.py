@@ -81,31 +81,61 @@ class TelegramAccountBot:
             ]
 
             # التحقق من وجود credentials في متغير البيئة أولاً
-            google_credentials = os.getenv('GOOGLE_CREDENTIALS')
+            google_credentials = os.getenv('GOOGLE_CREDENTIALS') or os.getenv('CREDENTIALS')
+
+            logger.info(f"🔍 البحث عن credentials...")
+            logger.info(f"📁 مسار الملف المحلي: {self.credentials_file}")
+            logger.info(f"🌐 GOOGLE_CREDENTIALS موجود: {bool(os.getenv('GOOGLE_CREDENTIALS'))}")
+            logger.info(f"🌐 CREDENTIALS موجود: {bool(os.getenv('CREDENTIALS'))}")
+            logger.info(f"📄 ملف credentials.json موجود: {os.path.exists(self.credentials_file) if self.credentials_file else False}")
+
+            # طباعة أول 100 حرف من credentials للتأكد
+            if google_credentials:
+                logger.info(f"📝 أول 100 حرف من credentials: {google_credentials[:100]}...")
 
             if google_credentials:
-                # استخدام credentials من متغير البيئة
-                import json
-                creds_dict = json.loads(google_credentials)
-                credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-                logger.info("تم تحميل credentials من متغير البيئة")
+                try:
+                    # استخدام credentials من متغير البيئة
+                    import json
+                    logger.info("🔄 محاولة تحليل JSON...")
+                    creds_dict = json.loads(google_credentials)
+                    logger.info("✅ تم تحليل JSON بنجاح")
+
+                    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+                    logger.info("✅ تم تحميل credentials من متغير البيئة بنجاح")
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ خطأ في تحليل JSON: {e}")
+                    raise
+                except Exception as e:
+                    logger.error(f"❌ خطأ في تحليل credentials من متغير البيئة: {e}")
+                    raise
             elif self.credentials_file and os.path.exists(self.credentials_file):
                 # استخدام ملف credentials.json المحلي
-                credentials = Credentials.from_service_account_file(
-                    self.credentials_file,
-                    scopes=scopes
-                )
-                logger.info("تم تحميل credentials من الملف المحلي")
+                logger.info("🔄 محاولة تحميل من الملف المحلي...")
+                try:
+                    credentials = Credentials.from_service_account_file(
+                        self.credentials_file,
+                        scopes=scopes
+                    )
+                    logger.info("✅ تم تحميل credentials من الملف المحلي بنجاح")
+                except Exception as e:
+                    logger.error(f"❌ خطأ في تحميل الملف المحلي: {e}")
+                    raise
             else:
+                logger.error("❌ لم يتم العثور على credentials في أي مكان")
+                logger.error(f"❌ متغيرات البيئة المتاحة: {list(os.environ.keys())}")
                 raise FileNotFoundError("لم يتم العثور على credentials في متغير البيئة أو الملف المحلي")
 
             # إنشاء عميل gspread
+            logger.info("🔄 محاولة إنشاء عميل gspread...")
             self.gc = gspread.authorize(credentials)
+            logger.info("✅ تم إنشاء عميل gspread بنجاح")
 
             # فتح الشيت
+            logger.info(f"🔄 محاولة فتح الشيت بالمعرف: {self.sheet_id}")
             self.sheet = self.gc.open_by_key(self.sheet_id).sheet1
 
-            logger.info("تم الاتصال بـ Google Sheets بنجاح")
+            logger.info("✅ تم الاتصال بـ Google Sheets بنجاح")
 
         except Exception as e:
             logger.error(f"خطأ في الاتصال بـ Google Sheets: {e}")
