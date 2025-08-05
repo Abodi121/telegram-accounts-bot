@@ -43,9 +43,13 @@ bot_instance = None
 
 class TelegramAccountBot:
     def __init__(self):
-        self.bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        self.bot_token = os.getenv('BOT_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
         self.sheet_id = os.getenv('GOOGLE_SHEET_ID')
         self.credentials_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
+
+        # إذا لم يتم العثور على ملف credentials، استخدم متغير البيئة مباشرة
+        if not os.path.exists(self.credentials_file):
+            self.credentials_file = None
         self.admin_username = os.getenv('ADMIN_USERNAME', 'jlsh1sa')
         self.admin_phone = os.getenv('ADMIN_PHONE', '0554611589')
 
@@ -75,21 +79,34 @@ class TelegramAccountBot:
                 'https://www.googleapis.com/auth/spreadsheets',
                 'https://www.googleapis.com/auth/drive'
             ]
-            
-            # تحميل بيانات الاعتماد
-            credentials = Credentials.from_service_account_file(
-                self.credentials_file, 
-                scopes=scopes
-            )
-            
+
+            # التحقق من وجود credentials في متغير البيئة أولاً
+            google_credentials = os.getenv('GOOGLE_CREDENTIALS')
+
+            if google_credentials:
+                # استخدام credentials من متغير البيئة
+                import json
+                creds_dict = json.loads(google_credentials)
+                credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+                logger.info("تم تحميل credentials من متغير البيئة")
+            elif self.credentials_file and os.path.exists(self.credentials_file):
+                # استخدام ملف credentials.json المحلي
+                credentials = Credentials.from_service_account_file(
+                    self.credentials_file,
+                    scopes=scopes
+                )
+                logger.info("تم تحميل credentials من الملف المحلي")
+            else:
+                raise FileNotFoundError("لم يتم العثور على credentials في متغير البيئة أو الملف المحلي")
+
             # إنشاء عميل gspread
             self.gc = gspread.authorize(credentials)
-            
+
             # فتح الشيت
             self.sheet = self.gc.open_by_key(self.sheet_id).sheet1
-            
+
             logger.info("تم الاتصال بـ Google Sheets بنجاح")
-            
+
         except Exception as e:
             logger.error(f"خطأ في الاتصال بـ Google Sheets: {e}")
             self.gc = None
