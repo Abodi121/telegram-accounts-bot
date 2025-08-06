@@ -81,30 +81,67 @@ class TelegramAccountBot:
             ]
 
             # التحقق من وجود credentials في متغير البيئة أولاً
-            google_credentials = os.getenv('GOOGLE_CREDENTIALS') or os.getenv('CREDENTIALS')
+            # جرب جميع الأسماء المحتملة
+            google_credentials = (
+                os.getenv('GOOGLE_CREDENTIALS') or
+                os.getenv('CREDENTIALS') or
+                os.getenv('GOOGLE_SERVICE_ACCOUNT') or
+                os.getenv('SERVICE_ACCOUNT_KEY')
+            )
 
             logger.info(f"🔍 البحث عن credentials...")
             logger.info(f"📁 مسار الملف المحلي: {self.credentials_file}")
             logger.info(f"🌐 GOOGLE_CREDENTIALS موجود: {bool(os.getenv('GOOGLE_CREDENTIALS'))}")
             logger.info(f"🌐 CREDENTIALS موجود: {bool(os.getenv('CREDENTIALS'))}")
+            logger.info(f"🌐 GOOGLE_SERVICE_ACCOUNT موجود: {bool(os.getenv('GOOGLE_SERVICE_ACCOUNT'))}")
+            logger.info(f"🌐 SERVICE_ACCOUNT_KEY موجود: {bool(os.getenv('SERVICE_ACCOUNT_KEY'))}")
             logger.info(f"📄 ملف credentials.json موجود: {os.path.exists(self.credentials_file) if self.credentials_file else False}")
+
+            # طباعة جميع متغيرات البيئة التي تحتوي على "CRED" أو "GOOGLE"
+            env_vars = {k: v[:50] + "..." if len(v) > 50 else v for k, v in os.environ.items()
+                       if 'CRED' in k.upper() or 'GOOGLE' in k.upper()}
+            logger.info(f"🔍 متغيرات البيئة ذات الصلة: {env_vars}")
 
             # طباعة أول 100 حرف من credentials للتأكد
             if google_credentials:
                 logger.info(f"📝 أول 100 حرف من credentials: {google_credentials[:100]}...")
+            else:
+                logger.error("❌ لم يتم العثور على أي متغير credentials")
 
             if google_credentials:
                 try:
                     # استخدام credentials من متغير البيئة
                     import json
                     logger.info("🔄 محاولة تحليل JSON...")
+
+                    # تنظيف المحتوى من أي مسافات أو أحرف غير مرغوبة
+                    google_credentials = google_credentials.strip()
+
+                    # إذا كان المحتوى مُرمز بـ base64، فك الترميز
+                    if not google_credentials.startswith('{'):
+                        try:
+                            import base64
+                            logger.info("🔄 محاولة فك ترميز base64...")
+                            google_credentials = base64.b64decode(google_credentials).decode('utf-8')
+                            logger.info("✅ تم فك ترميز base64 بنجاح")
+                        except Exception as base64_error:
+                            logger.error(f"❌ فشل فك ترميز base64: {base64_error}")
+
                     creds_dict = json.loads(google_credentials)
                     logger.info("✅ تم تحليل JSON بنجاح")
+
+                    # التحقق من وجود الحقول المطلوبة
+                    required_fields = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email']
+                    missing_fields = [field for field in required_fields if field not in creds_dict]
+                    if missing_fields:
+                        logger.error(f"❌ حقول مفقودة في credentials: {missing_fields}")
+                        raise ValueError(f"حقول مفقودة: {missing_fields}")
 
                     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
                     logger.info("✅ تم تحميل credentials من متغير البيئة بنجاح")
                 except json.JSONDecodeError as e:
                     logger.error(f"❌ خطأ في تحليل JSON: {e}")
+                    logger.error(f"❌ المحتوى الذي فشل في التحليل: {google_credentials[:200]}...")
                     raise
                 except Exception as e:
                     logger.error(f"❌ خطأ في تحليل credentials من متغير البيئة: {e}")
