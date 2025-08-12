@@ -52,6 +52,11 @@ class TelegramAccountBot:
             self.credentials_file = None
         self.admin_username = os.getenv('ADMIN_USERNAME', 'jlsh1sa')
         self.admin_phone = os.getenv('ADMIN_PHONE', '0554611589')
+        # قائمة معرفات الأدمن
+        self.admin_ids = [
+            6461427638,  # jlsh1sa
+            1393989189   # Abodi - أدمن إضافي
+        ]
 
         # إعداد قاعدة بيانات المستخدمين
         self.user_db = UserDatabase()
@@ -59,9 +64,17 @@ class TelegramAccountBot:
         # إعداد Google Sheets
         self.setup_google_sheets()
 
-    def is_admin(self, username):
+    def is_admin(self, username, user_id=None):
         """التحقق من صلاحيات الأدمن"""
-        return username == self.admin_username
+        # التحقق من اسم المستخدم
+        if username == self.admin_username:
+            return True
+
+        # التحقق من معرف المستخدم
+        if user_id and user_id in self.admin_ids:
+            return True
+
+        return False
 
     def check_user_credits(self, user_id, required_credits=1):
         """التحقق من كريدت المستخدم"""
@@ -445,8 +458,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or ""
     user_name = update.effective_user.first_name or "صديقي"
 
-    # تحديث معلومات المستخدم في قاعدة البيانات (مع إعطاء 100 كريدت للجدد)
-    is_new_user = bot_instance.user_db.update_user_info(user_id, username, user_name, give_welcome_credits=True)
+    # تحديث معلومات المستخدم في قاعدة البيانات (بدون توكنات ترحيب)
+    is_new_user = bot_instance.user_db.update_user_info(user_id, username, user_name, give_welcome_credits=False)
 
     # الحصول على كريدت المستخدم
     user_credits = bot_instance.user_db.get_credits(user_id)
@@ -456,13 +469,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_message = f"""
 🎉 **مرحباً {user_name}! أهلاً بك في بوت الحسابات**
 
-🎁 **هدية ترحيب: تم إعطاؤك 100 كريدت مجاناً!**
 💰 **رصيدك الحالي:** {user_credits} كريدت
 
-🎯 **ما يمكنك فعله الآن:**
-• شراء 100 حساب يوتيوب جاهز للاستخدام
-• شراء 100 حساب شات جي بي تي
-• جميع الحسابات محققة ومضمونة
+🎯 **ما نقدمه لك:**
+• حسابات يوتيوب جاهزة للاستخدام
+• حسابات شات جي بي تي محققة
+• جميع الحسابات مضمونة وآمنة
 
 📋 **الأوامر المتاحة:**
 📺 `/buy` - شراء حساب يوتيوب (1 كريدت)
@@ -471,7 +483,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📊 `/stats` - عرض الإحصائيات
 ❓ `/help` - عرض المساعدة التفصيلية
 
-🚀 **ابدأ الآن بكتابة** `/buy` **للحصول على حسابك الأول!**
+💳 **لشراء كريدت، تواصل مع الإدارة:**
+📞 **واتساب:** {bot_instance.admin_phone}
+💬 **تلقرام:** @{bot_instance.admin_username}
         """
     else:
         welcome_message = f"""
@@ -929,9 +943,10 @@ async def contact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """أمر لوحة تحكم الأدمن - عرض جميع الصلاحيات والأوامر"""
     username = update.effective_user.username or ""
+    user_id = update.effective_user.id
 
     # التحقق من صلاحيات الأدمن
-    if not bot_instance.is_admin(username):
+    if not bot_instance.is_admin(username, user_id):
         await update.message.reply_text(
             "❌ **غير مسموح!**\n\n"
             "هذا الأمر متاح للأدمن فقط.\n"
@@ -963,11 +978,15 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💳 **أوامر إدارة الكريدت:**
 • `/addcredits [user_id] [amount]` - إضافة كريدت مخصص
 • `/give100 [user_id]` - إعطاء 100 كريدت لمستخدم
+• `/resetuser [user_id]` - تصفير كريدت مستخدم محدد
+• `/resetall` - تصفير كريدت جميع المستخدمين
+• `/resetallconfirm` - تأكيد التصفير الجماعي
 • `/giveall100` - إعطاء 100 كريدت لجميع المستخدمين
 • `/giveall100confirm` - تأكيد العملية الجماعية
 
-📊 **أوامر الإحصائيات:**
+📊 **أوامر الإحصائيات والإدارة:**
 • `/adminstats` - إحصائيات مفصلة للأدمن
+• `/allusers` - عرض جميع المستخدمين
 • `/stats` - إحصائيات عامة للحسابات
 • `/debug` - فحص البيانات (20 صف)
 • `/debugall` - فحص جميع البيانات (100 صف)
@@ -1145,9 +1164,10 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """أمر إضافة كريدت (للأدمن فقط)"""
     username = update.effective_user.username or ""
+    user_id = update.effective_user.id
 
     # التحقق من صلاحيات الأدمن
-    if not bot_instance.is_admin(username):
+    if not bot_instance.is_admin(username, user_id):
         await update.message.reply_text("❌ هذا الأمر متاح للأدمن فقط!")
         return
 
@@ -1423,6 +1443,240 @@ async def give_all_100_credits_confirm_command(update: Update, context: ContextT
     except Exception as e:
         await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
 
+async def show_all_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر عرض جميع المستخدمين (للأدمن فقط)"""
+    username = update.effective_user.username or ""
+    user_id = update.effective_user.id
+
+    # التحقق من صلاحيات الأدمن
+    if not bot_instance.is_admin(username, user_id):
+        await update.message.reply_text("❌ هذا الأمر متاح للأدمن فقط!")
+        return
+
+    try:
+        all_users = bot_instance.user_db.get_all_users()
+
+        if not all_users:
+            await update.message.reply_text("❌ لا يوجد مستخدمين في قاعدة البيانات!")
+            return
+
+        # إحصائيات سريعة
+        total_users = len(all_users)
+        total_credits = sum(user.get('credits', 0) for user in all_users.values())
+        users_with_credits = sum(1 for user in all_users.values() if user.get('credits', 0) > 0)
+
+        message = f"👥 **جميع مستخدمي البوت ({total_users} مستخدم)**\n\n"
+        message += f"💰 **إجمالي الكريدت:** {total_credits}\n"
+        message += f"💳 **مستخدمين لديهم كريدت:** {users_with_credits}\n\n"
+
+        # عرض تفاصيل كل مستخدم
+        for i, (user_id, user_data) in enumerate(all_users.items(), 1):
+            credits = user_data.get('credits', 0)
+            username_user = user_data.get('username', 'غير محدد')
+            first_name = user_data.get('first_name', 'غير محدد')
+            total_purchases = user_data.get('total_purchases', 0)
+
+            message += f"**{i}.** {first_name}\n"
+            message += f"   📱 @{username_user}\n"
+            message += f"   🆔 `{user_id}`\n"
+            message += f"   💰 {credits} كريدت\n"
+            message += f"   🛒 {total_purchases} مشتريات\n\n"
+
+            # تقسيم الرسالة إذا كانت طويلة
+            if len(message) > 3500:
+                await update.message.reply_text(message, parse_mode='Markdown')
+                message = ""
+
+        if message:
+            await update.message.reply_text(message, parse_mode='Markdown')
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ في عرض المستخدمين: {str(e)}")
+
+async def reset_all_users_credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر تصفير كريدت جميع المستخدمين (للأدمن فقط)"""
+    username = update.effective_user.username or ""
+    user_id = update.effective_user.id
+
+    # التحقق من صلاحيات الأدمن
+    if not bot_instance.is_admin(username, user_id):
+        await update.message.reply_text("❌ هذا الأمر متاح للأدمن فقط!")
+        return
+
+    try:
+        all_users = bot_instance.user_db.get_all_users()
+
+        if not all_users:
+            await update.message.reply_text("❌ لا يوجد مستخدمين في قاعدة البيانات!")
+            return
+
+        # حساب المستخدمين الذين لديهم كريدت
+        users_with_credits = []
+        total_credits = 0
+
+        for user_id, user_data in all_users.items():
+            credits = user_data.get('credits', 0)
+            if credits > 0:
+                users_with_credits.append({
+                    'user_id': user_id,
+                    'credits': credits,
+                    'name': user_data.get('first_name', 'غير محدد')
+                })
+                total_credits += credits
+
+        if not users_with_credits:
+            await update.message.reply_text("✅ جميع المستخدمين لديهم 0 كريدت بالفعل!")
+            return
+
+        # رسالة تأكيد
+        confirm_message = f"⚠️ **تأكيد تصفير الكريدت**\n\n"
+        confirm_message += f"👥 **عدد المستخدمين:** {len(users_with_credits)}\n"
+        confirm_message += f"💰 **إجمالي الكريدت:** {total_credits}\n\n"
+        confirm_message += "**المستخدمين الذين سيتم تصفيرهم:**\n"
+
+        for user in users_with_credits[:10]:  # عرض أول 10 فقط
+            confirm_message += f"• {user['name']}: {user['credits']} كريدت\n"
+
+        if len(users_with_credits) > 10:
+            confirm_message += f"• ... و {len(users_with_credits) - 10} مستخدم آخر\n"
+
+        confirm_message += f"\n💡 **استخدم `/resetallconfirm` للتأكيد**"
+
+        await update.message.reply_text(confirm_message, parse_mode='Markdown')
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: {str(e)}")
+
+async def reset_all_users_credits_confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تأكيد تصفير كريدت جميع المستخدمين"""
+    username = update.effective_user.username or ""
+    user_id = update.effective_user.id
+
+    # التحقق من صلاحيات الأدمن
+    if not bot_instance.is_admin(username, user_id):
+        await update.message.reply_text("❌ هذا الأمر متاح للأدمن فقط!")
+        return
+
+    try:
+        all_users = bot_instance.user_db.get_all_users()
+
+        # تصفير جميع المستخدمين
+        reset_count = 0
+        total_reset_credits = 0
+
+        for user_id, user_data in all_users.items():
+            credits = user_data.get('credits', 0)
+            if credits > 0:
+                bot_instance.user_db.set_credits(user_id, 0)
+                reset_count += 1
+                total_reset_credits += credits
+
+        if reset_count == 0:
+            await update.message.reply_text("✅ جميع المستخدمين لديهم 0 كريدت بالفعل!")
+        else:
+            await update.message.reply_text(
+                f"🎉 **تم تصفير الكريدت بنجاح!**\n\n"
+                f"👥 **المستخدمين المصفرين:** {reset_count}\n"
+                f"💰 **الكريدت المصفر:** {total_reset_credits}\n"
+                f"✅ **جميع المستخدمين الآن لديهم 0 كريدت!**",
+                parse_mode='Markdown'
+            )
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: {str(e)}")
+
+async def reset_user_credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر تصفير كريدت مستخدم محدد (للأدمن فقط)"""
+    username = update.effective_user.username or ""
+    user_id = update.effective_user.id
+
+    # التحقق من صلاحيات الأدمن
+    if not bot_instance.is_admin(username, user_id):
+        await update.message.reply_text("❌ هذا الأمر متاح للأدمن فقط!")
+        return
+
+    try:
+        # استخراج المعاملات من الرسالة
+        args = update.message.text.split()
+        if len(args) != 2:
+            await update.message.reply_text(
+                "❌ **صيغة الأمر غير صحيحة!**\n\n"
+                "📝 **الاستخدام الصحيح:**\n"
+                "`/resetuser [user_id]`\n\n"
+                "**مثال:**\n"
+                "`/resetuser 123456789`\n\n"
+                "💡 **سيتم تصفير كريدت المستخدم إلى 0**",
+                parse_mode='Markdown'
+            )
+            return
+
+        target_user_id = int(args[1])
+
+        # التحقق من وجود المستخدم
+        all_users = bot_instance.user_db.get_all_users()
+        target_user_id_str = str(target_user_id)
+
+        if target_user_id_str not in all_users:
+            await update.message.reply_text(
+                f"❌ **المستخدم غير موجود!**\n\n"
+                f"🆔 **معرف المستخدم:** `{target_user_id}`\n"
+                f"📋 **استخدم `/allusers` لرؤية جميع المستخدمين**",
+                parse_mode='Markdown'
+            )
+            return
+
+        # الحصول على معلومات المستخدم
+        user_data = all_users[target_user_id_str]
+        old_credits = user_data.get('credits', 0)
+        username_target = user_data.get('username', 'غير محدد')
+        first_name_target = user_data.get('first_name', 'غير محدد')
+
+        if old_credits == 0:
+            await update.message.reply_text(
+                f"✅ **المستخدم لديه 0 كريدت بالفعل!**\n\n"
+                f"👤 **المستخدم:** {first_name_target} (@{username_target})\n"
+                f"🆔 **معرف المستخدم:** `{target_user_id}`\n"
+                f"💰 **الكريدت الحالي:** {old_credits} كريدت",
+                parse_mode='Markdown'
+            )
+            return
+
+        # تصفير الكريدت
+        bot_instance.user_db.set_credits(target_user_id, 0)
+
+        await update.message.reply_text(
+            f"🎉 **تم تصفير الكريدت بنجاح!**\n\n"
+            f"👤 **المستخدم:** {first_name_target} (@{username_target})\n"
+            f"🆔 **معرف المستخدم:** `{target_user_id}`\n"
+            f"💰 **الكريدت السابق:** {old_credits} كريدت\n"
+            f"💳 **الكريدت الجديد:** 0 كريدت\n\n"
+            f"✨ **تم التصفير بواسطة الأدمن!**",
+            parse_mode='Markdown'
+        )
+
+        # إرسال إشعار للمستخدم المستهدف
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=f"⚠️ **إشعار من الإدارة**\n\n"
+                     f"💰 **تم تصفير كريدتك بواسطة الأدمن**\n"
+                     f"💳 **رصيدك الحالي:** 0 كريدت\n\n"
+                     f"📞 **للاستفسار تواصل مع الإدارة:**\n"
+                     f"💬 **تلقرام:** @{bot_instance.admin_username}\n"
+                     f"📱 **واتساب:** {bot_instance.admin_phone}",
+                parse_mode='Markdown'
+            )
+            await update.message.reply_text("✅ تم إرسال إشعار للمستخدم أيضاً!")
+        except Exception:
+            await update.message.reply_text("⚠️ تم تصفير الكريدت ولكن لم يتم إرسال الإشعار للمستخدم")
+
+        logger.info(f"الأدمن {username} صفر كريدت المستخدم {target_user_id} من {old_credits} إلى 0")
+
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال معرف مستخدم صحيح!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
+
 async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """أمر إحصائيات الأدمن"""
     username = update.effective_user.username or ""
@@ -1493,6 +1747,10 @@ def main():
     application.add_handler(CommandHandler("giveall100confirm", give_all_100_credits_confirm_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("adminstats", admin_stats_command))
+    application.add_handler(CommandHandler("allusers", show_all_users_command))
+    application.add_handler(CommandHandler("resetall", reset_all_users_credits_command))
+    application.add_handler(CommandHandler("resetallconfirm", reset_all_users_credits_confirm_command))
+    application.add_handler(CommandHandler("resetuser", reset_user_credits_command))
 
     # تشغيل البوت
     logger.info("تم تشغيل البوت...")
